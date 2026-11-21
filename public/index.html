@@ -10,6 +10,7 @@ h1{font-size:19px}.sub{font-size:12px;color:var(--m)}
 main{max-width:1000px;margin:auto;padding:18px}
 .note{background:var(--o2);border-radius:16px;padding:12px 16px;font-size:14px;margin-bottom:18px;animation:up .7s var(--e)}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:14px}
+.filters{display:flex;gap:8px;overflow-x:auto;padding:2px 1px 14px;scrollbar-width:thin}.filter{flex:0 0 auto;border:1px solid var(--b);background:#fff;border-radius:99px;padding:7px 15px;color:var(--m);cursor:pointer;white-space:nowrap;transition:background .2s,color .2s,border-color .2s}.filter.active,.filter:hover{background:var(--o);border-color:var(--o);color:#fff}
 .card{background:#fff;border:1px solid var(--b);border-radius:22px;padding:10px;display:flex;flex-direction:column;gap:6px;opacity:0;transform:translateY(16px);transition:opacity .7s var(--e),transform .7s var(--e),box-shadow .4s var(--e)}
 .card.in{opacity:1;transform:none}.card:hover{box-shadow:0 10px 30px #f973161f}
 .tap{cursor:pointer;display:flex;flex-direction:column;gap:6px}.big img{width:100%;max-height:58vh;object-fit:contain;border-radius:20px;background:var(--o2)}.big .ph{width:100%;aspect-ratio:1;border-radius:20px}.big .ph{font-size:96px}.desc{color:var(--m);font-size:14px;line-height:1.8;margin:8px 0;white-space:pre-wrap}.ph{width:100%;aspect-ratio:1;border-radius:16px;background:var(--o2);display:grid;place-items:center;font-size:56px}.it .ph{width:48px;height:48px;font-size:26px;border-radius:12px}.card img{width:100%;aspect-ratio:1;object-fit:contain;border-radius:16px;background:var(--o2)}
@@ -32,7 +33,7 @@ h2{margin:30px 0 10px;font-size:18px}.rv{background:#fff;border:1px solid var(--
 </style></head><body>
 <header><div class="logo">م</div><div><h1>سنتر المربد</h1><div class="sub">سوبر ماركت</div></div></header>
 <main><div class="note" id="note"></div>
-<div class="grid" id="g"></div>
+<div class="filters" id="filters" aria-label="تصفية المنتجات حسب الفئة"></div><div class="grid" id="g"></div>
 <h2>آراء الزبائن</h2><div id="rvs"></div>
 <div class="rv"><b>شاركنا رأيك</b><input id="rn" placeholder="الاسم" maxlength="60"><select id="rr"><option value="5">★★★★★</option><option value="4">★★★★</option><option value="3">★★★</option><option value="2">★★</option><option value="1">★</option></select><textarea id="rc" rows="2" maxlength="500" placeholder="تعليقك"></textarea><button class="go" onclick="sendRv()">إرسال</button><div class="sub" id="rm"></div></div></main>
 <button id="fab" onclick="openCart()">🛒<span id="cnt">0</span></button>
@@ -42,17 +43,22 @@ h2{margin:30px 0 10px;font-size:18px}.rv{background:#fff;border:1px solid var(--
 const U='https://hjrryvoavxgidynfzdqj.supabase.co',K='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhqcnJ5dm9hdnhnaWR5bmZ6ZHFqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTM4Njk3MzIsImV4cCI6MjEwOTQ0NTczMn0.Tjxd6omsb4H3zpFHwYCU-hpE3zQ5Lg76V8bxLCSOkjM';
 const H={apikey:K,Authorization:'Bearer '+K,'Content-Type':'application/json'};
 const $=s=>document.querySelector(s),f=n=>(+n).toLocaleString('en')+' د.ع';
-let P=[],cart={},sel={},S={delivery_fee:2000,free_over:7000},first=1;
+let P=[],C=[],categoriesAvailable=true,filter='all',cart={},sel={},S={delivery_fee:2000,free_over:7000},first=1;
 try{cart=JSON.parse(localStorage.cart||'{}')}catch{}
 const save=()=>{try{localStorage.cart=JSON.stringify(cart)}catch{}};
 const im=p=>/^(data:image|https?:)/.test(p.image_data||'')?`<img src="${esc(p.image_data)}" alt="${esc(p.name)}">`:`<div class="ph">${esc(p.image_data||'🛒')}</div>`;
 async function api(p,o={}){const r=await fetch(U+'/rest/v1/'+p,{headers:H,...o});const j=await r.json().catch(()=>null);if(!r.ok)throw new Error(j?.message||'خطأ');return j}
 async function load(){try{const[p,st]=await Promise.all([api('products?select=*&order=id.desc'),api('settings?select=*')]);P=p;st.forEach(x=>S[x.key]=x.value)}catch(e){$('#g').innerHTML='<div class="sub">تعذر تحميل المنتجات، حدّث الصفحة</div>';return}
+ try{C=await api('categories?select=id,name&order=id.asc');categoriesAvailable=true}catch(e){C=[];categoriesAvailable=false;filter='all'}
+ if(filter!=='all'&&filter!=='uncategorized'&&!C.some(c=>String(c.id)===filter))filter='all';
+ if(filter==='uncategorized'&&!P.some(p=>p.category_id==null||!C.some(c=>String(c.id)===String(p.category_id))))filter='all';renderFilters();
  $('#note').textContent=`🚚 التوصيل مجاني للطلبات فوق ${S.free_over.toLocaleString('en')} دينار (وإلا ${S.delivery_fee.toLocaleString('en')}) · يشمل المربد القديم، المربد الجديد، حي القائد`;
  for(const id in cart){const p=P.find(x=>x.id==id);if(!p||p.quantity<1)delete cart[id];else cart[id]=Math.min(cart[id],p.quantity)}save();draw();
  const R=await api('reviews?select=*&order=id.desc');$('#rvs').innerHTML=R.map(r=>`<div class="rv"><i>${'★'.repeat(r.rating)}</i> <b>${esc(r.name)}</b><div>${esc(r.comment)}</div></div>`).join('')||'<div class="sub">كُن أول من يعلّق</div>'}
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-function draw(){$('#g').innerHTML=P.map(p=>`<div class="card"><div class="tap" onclick="detail(${p.id})">${im(p)}<b>${esc(p.name)}</b></div><small>العدد: ${p.quantity}</small><span class="price">${f(p.price)}</span><div class="row"><div class="q"><button onclick="st(${p.id},1)">+</button><span id="s${p.id}">${sel[p.id]||1}</span><button onclick="st(${p.id},-1)">−</button></div><button class="add" ${p.quantity<1?'disabled':''} onclick="add(${p.id})">${p.quantity<1?'نفد':'أضف'}</button></div></div>`).join('');
+function renderFilters(){const unclassified=categoriesAvailable&&P.some(p=>p.category_id==null||!C.some(c=>String(c.id)===String(p.category_id)));$('#filters').innerHTML=[['all','الكل'],...C.map(c=>[String(c.id),esc(c.name)]),...(unclassified?[['uncategorized','غير مصنّف']]:[])].map(([id,name])=>`<button type="button" class="filter${filter===id?' active':''}" aria-pressed="${filter===id}" onclick="setFilter('${id}')">${name}</button>`).join('')}
+function setFilter(id){filter=id;renderFilters();draw()}
+function draw(){const visible=P.filter(p=>filter==='all'||(filter==='uncategorized'?(p.category_id==null||!C.some(c=>String(c.id)===String(p.category_id))):String(p.category_id)===filter));$('#g').innerHTML=visible.map(p=>`<div class="card"><div class="tap" onclick="detail(${p.id})">${im(p)}<b>${esc(p.name)}</b></div><small>العدد: ${p.quantity}</small><span class="price">${f(p.price)}</span><div class="row"><div class="q"><button onclick="st(${p.id},1)">+</button><span id="s${p.id}">${sel[p.id]||1}</span><button onclick="st(${p.id},-1)">−</button></div><button class="add" ${p.quantity<1?'disabled':''} onclick="add(${p.id})">${p.quantity<1?'نفد':'أضف'}</button></div></div>`).join('')||'<div class="sub">لا توجد منتجات في هذه الفئة</div>';
  document.querySelectorAll('.card').forEach((c,i)=>first?setTimeout(()=>c.classList.add('in'),i*50):c.classList.add('in'));first=0;badge(1)}
 function st(id,d){const p=P.find(x=>x.id==id);sel[id]=Math.max(1,Math.min(Math.max(1,p.quantity),(sel[id]||1)+d));$('#s'+id).textContent=sel[id]}
 function add(id){const p=P.find(x=>x.id==id);cart[id]=Math.min(p.quantity,(cart[id]||0)+(sel[id]||1));save();badge()}
